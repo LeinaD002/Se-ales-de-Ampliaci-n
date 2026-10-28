@@ -1,0 +1,638 @@
+function interfaz_osciloscopio()
+% INTERFAZ_OSCILOSCOPIO
+% Simulador de amplificacion y atenuacion de audio.
+% Tema 2: Senales y escalamiento en amplitud.
+% Ecuacion: y(t) = G * x(t)
+% Cancion: Osito Gominola
+
+    clc;
+
+    % ================= CONFIGURACION =================
+
+    archivos = {'gominola.mp3'};
+    nombres = {'gominola'};
+    titulos = {'Osito Gominola'};
+
+    inicio_s = 4; % Segundo donde comienza el fragmento
+    duracion_s = 25; % Duracion del fragmento: 25 segundos
+    ventana_s = 0.02; % Ventana de zoom: 20 milisegundos
+
+    cancion = 1;
+    G = 1;
+    pos = 0;
+    player = [];
+
+    % Verificar que la cancion exista
+
+    if ~isfile(archivos{cancion})
+        error(['No se encontro el archivo gominola.mp3. ', ...
+            'Coloca la cancion en la misma carpeta del archivo ', ...
+            'interfaz_osciloscopio.m.']);
+    end
+
+    % Cargar el fragmento de audio
+
+    [x, fs] = leer_fragmento( ...
+        archivos{cancion}, inicio_s, duracion_s);
+
+    % ================= VENTANA PRINCIPAL =================
+
+    fig = figure( ...
+        'Name', 'Amplificador de Senales - Tema 2', ...
+        'NumberTitle', 'off', ...
+        'Position', [100 100 950 600], ...
+        'MenuBar', 'none', ...
+        'Resize', 'on', ...
+        'CloseRequestFcn', @cerrar_app);
+
+    % Eje de la senal ampliada
+
+    ax1 = axes('Parent', fig, ...
+        'Units', 'normalized', ...
+        'Position', [0.07 0.62 0.90 0.32]);
+
+    % Eje de la senal completa
+
+    ax2 = axes('Parent', fig, ...
+        'Units', 'normalized', ...
+        'Position', [0.07 0.27 0.90 0.28]);
+
+    % ================= CONTROLES =================
+
+    % Selector de cancion
+
+    uicontrol(fig, ...
+        'Style', 'text', ...
+        'String', 'Cancion:', ...
+        'Position', [20 45 65 22], ...
+        'HorizontalAlignment', 'left');
+
+    popup = uicontrol(fig, ...
+        'Style', 'popupmenu', ...
+        'String', titulos, ...
+        'Position', [80 45 90 25], ...
+        'Callback', @cambiar_cancion);
+
+    % Deslizador de ganancia
+
+    sldG = uicontrol(fig, ...
+        'Style', 'slider', ...
+        'Min', -5, ...
+        'Max', 5, ...
+        'Value', 1, ...
+        'SliderStep', [0.01 0.05], ...
+        'Position', [180 50 250 20], ...
+        'Callback', @cambiar_ganancia);
+
+    txtG = uicontrol(fig, ...
+        'Style', 'text', ...
+        'String', 'G = 1.00', ...
+        'Position', [435 48 95 22], ...
+        'HorizontalAlignment', 'left');
+
+    % Deslizador de posicion del zoom
+
+    max_pos = max(0, numel(x)/fs - ventana_s);
+
+    sldP = uicontrol(fig, ...
+        'Style', 'slider', ...
+        'Min', 0, ...
+        'Max', max_pos, ...
+        'Value', 0, ...
+        'SliderStep', [0.01 0.1], ...
+        'Position', [180 20 250 20], ...
+        'Callback', @cambiar_pos);
+
+    txtP = uicontrol(fig, ...
+        'Style', 'text', ...
+        'String', 'Inicio = 0.00 s', ...
+        'Position', [435 18 95 22], ...
+        'HorizontalAlignment', 'left');
+
+    % Boton reproducir
+
+    uicontrol(fig, ...
+        'Style', 'pushbutton', ...
+        'String', 'Reproducir', ...
+        'Position', [540 45 90 30], ...
+        'Callback', @reproducir);
+
+    % Boton detener
+
+    uicontrol(fig, ...
+        'Style', 'pushbutton', ...
+        'String', 'Detener', ...
+        'Position', [640 45 90 30], ...
+        'Callback', @detener_audio);
+
+    % Boton guardar WAV
+
+    uicontrol(fig, ...
+        'Style', 'pushbutton', ...
+        'String', 'Guardar WAV', ...
+        'Position', [740 45 100 30], ...
+        'Callback', @guardar_wav);
+
+    % Boton restablecer
+
+    uicontrol(fig, ...
+        'Style', 'pushbutton', ...
+        'String', 'Restablecer', ...
+        'Position', [540 10 90 30], ...
+        'Callback', @restablecer);
+
+    % Boton informacion
+
+    uicontrol(fig, ...
+        'Style', 'pushbutton', ...
+        'String', 'Informacion', ...
+        'Position', [640 10 90 30], ...
+        'Callback', @mostrar_info);
+
+    % Boton salir
+
+    uicontrol(fig, ...
+        'Style', 'pushbutton', ...
+        'String', 'Salir', ...
+        'Position', [740 10 100 30], ...
+        'Callback', @salir);
+
+    % Texto informativo
+
+    txtInfo = uicontrol(fig, ...
+        'Style', 'text', ...
+        'FontWeight', 'bold', ...
+        'Position', [20 85 920 22], ...
+        'HorizontalAlignment', 'left');
+
+    % Dibujar la interfaz por primera vez
+
+    actualizar();
+
+    % =====================================================
+    % FUNCIONES ANIDADAS
+    % =====================================================
+
+    % Actualizar las graficas y los datos
+
+    function actualizar()
+
+        % Calcular el inicio y final de la ventana de zoom
+
+        i1 = min(numel(x), max(1, round(pos*fs) + 1));
+
+        i2 = min(i1 + max(1, round(ventana_s*fs)) - 1, ...
+            numel(x));
+
+        seg = x(i1:i2);
+
+        tms = (0:numel(seg)-1)' / fs * 1000;
+
+        % Aplicar la ganancia
+
+        senal_teorica = G * seg;
+
+        % Limitar la senal al rango permitido
+
+        senal_salida = max(min(senal_teorica, 1), -1);
+
+        % ================= GRAFICA 1 =================
+
+        cla(ax1);
+
+        plot(ax1, tms, seg, 'b', 'LineWidth', 1.2);
+
+        hold(ax1, 'on');
+
+        plot(ax1, tms, senal_teorica, '--', ...
+            'Color', [1 0.6 0.6], ...
+            'LineWidth', 1.2);
+
+        plot(ax1, tms, senal_salida, 'r', ...
+            'LineWidth', 1.8);
+
+        hold(ax1, 'off');
+
+        ylim(ax1, [-1.2 1.2]);
+
+        grid(ax1, 'on');
+
+        xlabel(ax1, 'Tiempo (ms)');
+        ylabel(ax1, 'Amplitud');
+
+        title(ax1, sprintf( ...
+            '%s - Ventana de %.0f ms', ...
+            titulos{cancion}, ventana_s*1000));
+
+        legend(ax1, ...
+            {'Original x(t)', 'G*x(t) teorica', ...
+            'Salida limitada a +/-1'}, ...
+            'Location', 'northeast');
+
+        % ================= GRAFICA 2 =================
+
+        paso = max(1, floor(numel(x)/20000));
+
+        idx = 1:paso:numel(x);
+
+        tt = (idx-1)/fs;
+
+        cla(ax2);
+
+        plot(ax2, tt, x(idx), 'b');
+
+        hold(ax2, 'on');
+
+        plot(ax2, tt, ...
+            max(min(G*x(idx), 1), -1), 'r');
+
+        % Resaltar la ventana de zoom
+
+        patch(ax2, ...
+            [pos pos+ventana_s pos+ventana_s pos], ...
+            [-1.2 -1.2 1.2 1.2], ...
+            'g', ...
+            'FaceAlpha', 0.25, ...
+            'EdgeColor', 'none');
+
+        hold(ax2, 'off');
+
+        ylim(ax2, [-1.2 1.2]);
+
+        xlim(ax2, [0 max(numel(x)/fs, ventana_s)]);
+
+        grid(ax2, 'on');
+
+        xlabel(ax2, 'Tiempo (s)');
+        ylabel(ax2, 'Amplitud');
+
+        title(ax2, ...
+            'Senal completa: azul original, rojo procesada, verde zoom');
+
+        % ================= INFORMACION NUMERICA =================
+
+        y = max(min(G*x, 1), -1);
+
+        % Porcentaje de muestras que superan el rango
+
+        sat = 100 * mean(abs(G*x) > 1);
+
+        % Determinar el estado de la senal
+
+        if G == 0
+
+            estado = 'SILENCIO';
+
+        elseif G == 1
+
+            estado = 'SIN CAMBIO';
+
+        elseif G > 1
+
+            estado = 'AMPLIFICACION';
+
+        elseif G > 0
+
+            estado = 'ATENUACION';
+
+        else
+
+            estado = 'INVERSION DE FASE';
+
+        end
+
+        % Calcular la ganancia en decibelios
+
+        if G == 0
+
+            ganancia_dB = -Inf;
+
+        else
+
+            ganancia_dB = 20*log10(abs(G));
+
+        end
+
+        % Calcular el valor RMS de la salida
+
+        valor_rms = sqrt(mean(y.^2));
+
+        % Actualizar texto informativo
+
+        set(txtInfo, 'String', sprintf( ...
+            '%s | G = %.2f (%.1f dB) | Pico = %.3f | RMS = %.3f | Saturacion = %.1f %%', ...
+            estado, G, ganancia_dB, max(abs(y)), ...
+            valor_rms, sat));
+
+    end
+
+    % ================= CAMBIAR GANANCIA =================
+
+    function cambiar_ganancia(~, ~)
+
+        G = round(get(sldG, 'Value')*20)/20;
+
+        set(sldG, 'Value', G);
+
+        set(txtG, 'String', sprintf('G = %.2f', G));
+
+        actualizar();
+
+    end
+
+    % ================= CAMBIAR POSICION =================
+
+    function cambiar_pos(~, ~)
+
+        pos = get(sldP, 'Value');
+
+        set(txtP, 'String', ...
+            sprintf('Inicio = %.2f s', pos));
+
+        actualizar();
+
+    end
+
+    % ================= CAMBIAR CANCION =================
+
+    function cambiar_cancion(~, ~)
+
+        detener_audio();
+
+        cancion = get(popup, 'Value');
+
+        [x, fs] = leer_fragmento( ...
+            archivos{cancion}, inicio_s, duracion_s);
+
+        pos = 0;
+
+        max_pos = max(0, numel(x)/fs - ventana_s);
+
+        set(sldP, ...
+            'Min', 0, ...
+            'Max', max_pos, ...
+            'Value', 0);
+
+        set(txtP, 'String', 'Inicio = 0.00 s');
+
+        actualizar();
+
+    end
+
+    % ================= REPRODUCIR AUDIO =================
+
+    function reproducir(~, ~)
+
+        detener_audio();
+
+        % Aplicar la ganancia
+
+        y = G*x;
+
+        % Evitar valores fuera del rango permitido
+
+        y = max(min(y, 1), -1);
+
+        % Crear el reproductor
+
+        player = audioplayer(y, fs);
+
+        % Reproducir
+
+        play(player);
+
+    end
+
+    % ================= DETENER AUDIO =================
+
+    function detener_audio(~, ~)
+
+        if ~isempty(player)
+
+            try
+
+                if isvalid(player)
+
+                    stop(player);
+
+                end
+
+            catch
+
+                % No hacer nada si el reproductor ya no existe
+
+            end
+
+        end
+
+    end
+
+    % ================= GUARDAR AUDIO =================
+
+    function guardar_wav(~, ~)
+
+        % Aplicar la ganancia
+
+        y = G*x;
+
+        % Limitar la salida
+
+        y = max(min(y, 1), -1);
+
+        % Crear el nombre del archivo
+
+        nombre = sprintf('%s_G%.2f.wav', ...
+            nombres{cancion}, G);
+
+        % Permitir elegir donde guardar el archivo
+
+        [archivo, ruta] = uiputfile( ...
+            '*.wav', ...
+            'Guardar audio procesado', ...
+            nombre);
+
+        % Si el usuario cancela, no guardar
+
+        if isequal(archivo, 0) || isequal(ruta, 0)
+
+            return;
+
+        end
+
+        % Guardar archivo de audio
+
+        audiowrite(fullfile(ruta, archivo), y, fs);
+
+        % Mostrar confirmacion
+
+        msgbox(sprintf( ...
+            'Archivo guardado correctamente:\n%s', ...
+            fullfile(ruta, archivo)), ...
+            'Guardar WAV');
+
+    end
+
+    % ================= RESTABLECER =================
+
+    function restablecer(~, ~)
+
+        detener_audio();
+
+        G = 1;
+
+        pos = 0;
+
+        set(sldG, 'Value', 1);
+
+        set(txtG, 'String', 'G = 1.00');
+
+        set(sldP, 'Value', 0);
+
+        set(txtP, 'String', 'Inicio = 0.00 s');
+
+        actualizar();
+
+    end
+
+    % ================= MOSTRAR INFORMACION =================
+
+    function mostrar_info(~, ~)
+
+        msgbox({ ...
+            'TEMA 2: SENALES Y ESCALAMIENTO EN AMPLITUD', ...
+            '', ...
+            'Ecuacion: y(t) = G * x(t)', ...
+            '', ...
+            'Cancion: Osito Gominola', ...
+            '', ...
+            'G = 0: silencio.', ...
+            '0 < G < 1: atenuacion.', ...
+            'G = 1: senal original.', ...
+            'G > 1: amplificacion.', ...
+            'G < 0: inversion de fase.', ...
+            '', ...
+            'Grupo No. ___', ...
+            'Integrantes:', ...
+            '1. ____________________', ...
+            '2. ____________________', ...
+            '3. ____________________', ...
+            '4. ____________________'}, ...
+            'Informacion del proyecto');
+
+    end
+
+    % ================= SALIR =================
+
+    function salir(~, ~)
+
+        resp = questdlg( ...
+            'Desea salir del programa?', ...
+            'Salir', ...
+            'Si', 'No', 'No');
+
+        if strcmp(resp, 'Si')
+
+            cerrar_app();
+
+        end
+
+    end
+
+    % ================= CERRAR INTERFAZ =================
+
+    function cerrar_app(~, ~)
+
+        detener_audio();
+
+        if isgraphics(fig)
+
+            delete(fig);
+
+        end
+
+    end
+
+end
+
+% =========================================================
+% FUNCION LOCAL PARA LEER Y PREPARAR EL AUDIO
+% =========================================================
+
+function [x, fs] = leer_fragmento(archivo, t_ini, dur)
+
+    % Comprobar que el archivo existe
+
+    if ~isfile(archivo)
+
+        error(['No se encontro "%s". Coloca el archivo ', ...
+            'en la misma carpeta del script.'], archivo);
+
+    end
+
+    % Leer archivo de audio
+
+    [y, fs] = audioread(archivo);
+
+    % Convertir audio estereo a mono
+
+    if size(y, 2) > 1
+
+        y = mean(y, 2);
+
+    end
+
+    % Calcular las muestras inicial y final
+
+    i1 = round(t_ini*fs) + 1;
+
+    i2 = min(round((t_ini + dur)*fs), length(y));
+
+    % Comprobar la duracion del archivo
+
+    if isempty(y)
+
+        error('El archivo de audio esta vacio.');
+
+    end
+
+    % Si el inicio supera la duracion, usar el comienzo
+
+    if i1 >= length(y) || i1 >= i2
+
+        i1 = 1;
+
+        i2 = min(round(dur*fs), length(y));
+
+    end
+
+    % Extraer el fragmento
+
+    x = y(i1:i2);
+
+    % Comprobar que hay muestras
+
+    if isempty(x)
+
+        error('No se pudo extraer el fragmento de audio.');
+
+    end
+
+    % Eliminar componente continua
+
+    x = x - mean(x);
+
+    % Normalizar la amplitud
+
+    pico = max(abs(x));
+
+    if pico > 0
+
+        x = x/pico;
+
+    end
+
+    % Dejar margen para poder amplificar
+
+    x = 0.5*x;
+
+end
