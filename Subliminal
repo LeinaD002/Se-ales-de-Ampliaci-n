@@ -1,0 +1,405 @@
+%% =====================================================================
+% TEMA 2 - ESCUCHAR AL REVES Y ANALIZAR EL AUDIO
+%
+% Cancion: Osito Gominola
+%
+% Este programa:
+% 1) Reproduce el audio original.
+% 2) Invierte el audio en el tiempo.
+% 3) Reproduce el audio al reves.
+% 4) Amplifica el audio.
+% 5) Amplifica selectivamente las partes debiles.
+% 6) Muestra graficas de las señales.
+% 7) Muestra energia por segundo.
+% 8) Muestra el espectrograma.
+%
+%% =====================================================================
+
+clc;
+clear;
+close all;
+
+%% PARAMETROS
+
+canciones = {'gominola.mp3'};
+
+nombres = {'gominola'};
+
+titulos = {'Osito Gominola'};
+
+inicio_s = 4; % Segundo aproximado donde comienza el coro
+duracion_s = 25; % Duracion del fragmento: 25 segundos
+                       % Usa 999 para analizar toda la cancion
+
+ganancia = 4; % Amplificacion general
+
+reproducir = true; % true = reproduce el audio
+
+
+%% =====================================================================
+% PROCESAR LA CANCION
+%% =====================================================================
+
+for k = 1:numel(canciones)
+
+    %% COMPROBAR QUE EXISTE EL ARCHIVO
+
+    if ~isfile(canciones{k})
+        error('No se encontro "%s" en la carpeta actual.', ...
+            canciones{k});
+    end
+
+
+    %% CARGAR AUDIO
+
+    [y, fs] = audioread(canciones{k});
+
+    % Convertir a mono
+
+    y = mean(y, 2);
+
+
+    %% SELECCIONAR EL FRAGMENTO
+
+    i1 = round(inicio_s * fs) + 1;
+
+    if i1 > numel(y)
+        error('El segundo de inicio supera la duracion de la cancion.');
+    end
+
+    if duracion_s == 999
+        i2 = numel(y);
+    else
+        i2 = min(round((inicio_s + duracion_s) * fs), numel(y));
+    end
+
+    x = y(i1:i2);
+
+
+    %% QUITAR COMPONENTE DC
+
+    x = x - mean(x);
+
+
+    %% NORMALIZAR
+
+    if max(abs(x)) > 0
+        x = 0.5 * x / max(abs(x));
+    end
+
+
+    %% EJE DE TIEMPO
+
+    t = (0:numel(x)-1)' / fs;
+
+
+    %% ================================================================
+    % 1. INVERTIR EL AUDIO EN EL TIEMPO
+    %% ================================================================
+
+    x_rev = flipud(x);
+
+
+    %% ================================================================
+    % 2. AMPLIFICACION GENERAL
+    %% ================================================================
+
+    x_amp = max(min(ganancia * x, 1), -1);
+
+    x_rev_amp = max(min(ganancia * x_rev, 1), -1);
+
+
+    %% ================================================================
+    % 3. AMPLIFICACION SELECTIVA
+    %% ================================================================
+
+    ventana = max(1, round(0.05 * fs));
+
+    env = sqrt(movmean(x.^2, ventana));
+
+    env = max(env, 0.005);
+
+    objetivo = 0.3;
+
+    g_var = min(objetivo ./ env, 20);
+
+    x_sel = max(min(x .* g_var, 1), -1);
+
+    x_rev_sel = flipud(x_sel);
+
+
+    %% ================================================================
+    % 4. ENERGIA POR SEGUNDO
+    %% ================================================================
+
+    seg_n = floor(numel(x) / fs);
+
+    rms_seg = zeros(seg_n, 1);
+
+    for s = 1:seg_n
+
+        trozo = x((s-1)*fs+1 : s*fs);
+
+        rms_seg(s) = sqrt(mean(trozo.^2));
+
+    end
+
+
+    %% ================================================================
+    % 5. GRAFICAS
+    %% ================================================================
+
+    figure( ...
+        'Name', ['Analisis de audio - ' titulos{k}], ...
+        'NumberTitle', 'off', ...
+        'Position', [40 40 1150 780]);
+
+
+    %% GRAFICA 1: ORIGINAL VS AMPLIFICADA
+
+    subplot(4,1,1);
+
+    plot(t, x, 'b');
+
+    hold on;
+
+    plot(t, x_amp, 'r');
+
+    hold off;
+
+    grid on;
+
+    ylim([-1.2 1.2]);
+
+    legend('Original', sprintf('a = %g', ganancia));
+
+    title([titulos{k} ' - Original vs Amplificada']);
+
+    xlabel('Tiempo (s)');
+
+    ylabel('Amplitud');
+
+
+    %% GRAFICA 2: AUDIO AL REVES
+
+    subplot(4,1,2);
+
+    plot(t, x_rev, 'm');
+
+    grid on;
+
+    ylim([-1.2 1.2]);
+
+    title('Audio al reves');
+
+    xlabel('Tiempo (s)');
+
+    ylabel('Amplitud');
+
+
+    %% GRAFICA 3: NIVEL RMS POR SEGUNDO
+
+    subplot(4,1,3);
+
+    if seg_n > 0
+        bar(1:seg_n, rms_seg);
+    else
+        text(0.5, 0.5, ...
+            'El fragmento dura menos de un segundo.', ...
+            'HorizontalAlignment', 'center');
+    end
+
+    grid on;
+
+    title('Nivel RMS por segundo');
+
+    xlabel('Segundo');
+
+    ylabel('RMS');
+
+
+    %% GRAFICA 4: ESPECTROGRAMA
+
+    subplot(4,1,4);
+
+    N = 1024;
+
+    salto = 512;
+
+    if numel(x) >= N
+
+        nfr = floor((numel(x) - N) / salto) + 1;
+
+        S = zeros(N/2, nfr);
+
+        w = 0.5 - 0.5*cos( ...
+            2*pi*(0:N-1)'/(N-1));
+
+
+        for q = 1:nfr
+
+            seg = x( ...
+                (q-1)*salto+1 : ...
+                (q-1)*salto+N) .* w;
+
+            F = abs(fft(seg));
+
+            S(:,q) = F(1:N/2);
+
+        end
+
+
+        tf = ((0:nfr-1)*salto + N/2) / fs;
+
+        ff = (0:N/2-1) * fs/N;
+
+
+        imagesc( ...
+            tf, ...
+            ff, ...
+            20*log10(S + 1e-6));
+
+        axis xy;
+
+        ylim([0 min(5000, fs/2)]);
+
+        colormap(jet);
+
+        colorbar;
+
+        title('Espectrograma');
+
+        xlabel('Tiempo (s)');
+
+        ylabel('Frecuencia (Hz)');
+
+    else
+
+        text(0.5, 0.5, ...
+            'El fragmento es demasiado corto para el espectrograma.', ...
+            'HorizontalAlignment', 'center');
+
+        axis off;
+
+    end
+
+
+    %% ================================================================
+    % 6. GUARDAR AUDIOS
+    %% ================================================================
+
+    audiowrite( ...
+        [nombres{k} '_reves.wav'], ...
+        x_rev, ...
+        fs);
+
+    audiowrite( ...
+        [nombres{k} '_amplificada.wav'], ...
+        x_amp, ...
+        fs);
+
+    audiowrite( ...
+        [nombres{k} '_reves_amplificada.wav'], ...
+        x_rev_amp, ...
+        fs);
+
+    audiowrite( ...
+        [nombres{k} '_selectiva.wav'], ...
+        x_sel, ...
+        fs);
+
+    audiowrite( ...
+        [nombres{k} '_reves_selectiva.wav'], ...
+        x_rev_sel, ...
+        fs);
+
+
+    %% ================================================================
+    % 7. REPRODUCIR LOS AUDIOS
+    %% ================================================================
+
+    if reproducir
+
+        % --------------------------------------------------------------
+        % AUDIO ORIGINAL
+        % --------------------------------------------------------------
+
+        fprintf('\n=============================================\n');
+
+        fprintf('Cancion: %s\n', titulos{k});
+
+        fprintf('Reproduciendo AUDIO ORIGINAL durante 25 segundos...\n');
+
+        fprintf('=============================================\n');
+
+        n = min(numel(x), 25*fs);
+
+        reproductor = audioplayer(x(1:n), fs);
+
+        playblocking(reproductor);
+
+
+        % --------------------------------------------------------------
+        % AUDIO AL REVES
+        % --------------------------------------------------------------
+
+        fprintf('\nReproduciendo AUDIO AL REVES durante 25 segundos...\n');
+
+        reproductor = audioplayer(x_rev(1:n), fs);
+
+        playblocking(reproductor);
+
+
+        % --------------------------------------------------------------
+        % AUDIO AL REVES AMPLIFICADO
+        % --------------------------------------------------------------
+
+        fprintf('\nReproduciendo AUDIO AL REVES AMPLIFICADO durante 25 segundos...\n');
+
+        reproductor = audioplayer(x_rev_amp(1:n), fs);
+
+        playblocking(reproductor);
+
+
+        % --------------------------------------------------------------
+        % AUDIO AL REVES CON AMPLIFICACION SELECTIVA
+        % --------------------------------------------------------------
+
+        fprintf(['\nReproduciendo AUDIO AL REVES ', ...
+            'CON AMPLIFICACION SELECTIVA durante 25 segundos...\n']);
+
+        reproductor = audioplayer(x_rev_sel(1:n), fs);
+
+        playblocking(reproductor);
+
+    end
+
+end
+
+
+%% =====================================================================
+% MENSAJE FINAL
+%% =====================================================================
+
+fprintf('\n=============================================\n');
+
+fprintf('PROCESO TERMINADO\n');
+
+fprintf('=============================================\n');
+
+fprintf('Cancion analizada: Osito Gominola\n');
+
+fprintf('Se guardaron los archivos WAV:\n');
+
+fprintf('- gominola_reves.wav\n');
+
+fprintf('- gominola_amplificada.wav\n');
+
+fprintf('- gominola_reves_amplificada.wav\n');
+
+fprintf('- gominola_selectiva.wav\n');
+
+fprintf('- gominola_reves_selectiva.wav\n');
+
+fprintf('\nLas graficas tambien fueron generadas.\n');
+  
