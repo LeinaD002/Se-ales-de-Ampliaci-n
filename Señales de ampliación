@@ -1,0 +1,481 @@
+%% =====================================================================
+% TEMA 2: SEÑALES DE AMPLIACION (ESCALAMIENTO EN AMPLITUD)
+% Cancion: Osito Gominola
+%
+% Ecuacion continua: y(t) = a * x(t)
+% Ecuacion discreta: y[n] = a * x[n]
+% a > 1 -> amplificacion (ganancia)
+% 0 < a < 1 -> atenuacion
+% a < 0 -> inversion de fase
+%% =====================================================================
+
+%% PARTE 1. PARAMETROS
+
+% Utilizar la carpeta actual de MATLAB Drive.
+% Asi no se necesita una ruta de Windows.
+
+carpeta_proyecto = pwd;
+
+% Ruta completa de la cancion
+archivo_1 = fullfile(carpeta_proyecto, 'gominola.mp3');
+
+inicio_s = 4;
+duracion_s = 10;
+ganancias = [0.25 0.5 1 2 4 -1];
+reproducir = true;
+guardar_wav = true;
+
+canciones = {archivo_1};
+nombres = {'gominola'};
+titulos = {'Osito Gominola'};
+
+% Comprobar que existe la cancion
+if ~isfile(archivo_1)
+    error(['No se encontro el archivo de audio: ', archivo_1, ...
+           newline, ...
+           'Verifica que gominola.mp3 este dentro de: ', ...
+           carpeta_proyecto]);
+end
+
+fprintf('Carpeta del proyecto: %s\n', carpeta_proyecto);
+fprintf('Cancion encontrada: %s\n\n', archivo_1);
+
+%% PARTE 2. ESCALAMIENTO EN SEÑAL CONTINUA
+
+fs_s = 1000;
+t_s = 0:1/fs_s:1;
+x_s = sin(2*pi*3*t_s);
+a_s = [1 2 0.5 -1];
+
+txt_s = {'Original x(t)', ...
+         'a = 2 (amplificacion)', ...
+         'a = 0.5 (atenuacion)', ...
+         'a = -1 (inversion)'};
+
+col_s = {'b', 'r', 'm', 'k'};
+
+figure('Name', 'Parte 2 - Escalamiento senoidal', ...
+       'NumberTitle', 'off');
+
+for k = 1:4
+    subplot(2, 2, k);
+    plot(t_s, a_s(k)*x_s, col_s{k}, 'LineWidth', 1.5);
+    grid on;
+    ylim([-2.2 2.2]);
+    title(txt_s{k});
+    xlabel('Tiempo (s)');
+    ylabel('Amplitud (V)');
+end
+
+%% PARTE 3. ESCALAMIENTO EN SEÑAL DISCRETA
+
+n = 0:7;
+x_d = [0 1 2 1 0 -1 -2 -1];
+a_d = [1 2 0.5 -1];
+
+txt_d = {'x[n] original', ...
+         'y[n] = 2 x[n]', ...
+         'y[n] = 0.5 x[n]', ...
+         'y[n] = -1 x[n]'};
+
+figure('Name', 'Parte 3 - Escalamiento discreto', ...
+       'NumberTitle', 'off');
+
+for k = 1:4
+    subplot(2, 2, k);
+    stem(n, a_d(k)*x_d, 'filled', 'LineWidth', 1.5);
+    grid on;
+    ylim([-4.5 4.5]);
+    title(txt_d{k});
+    xlabel('n');
+    ylabel('Amplitud');
+
+    fprintf('%s = %s\n', txt_d{k}, ...
+            mat2str(a_d(k)*x_d));
+end
+
+%% PARTE 4. CARGAR LA CANCION
+
+x = cell(1, 1);
+fs = zeros(1, 1);
+
+for k = 1:1
+    if ~isfile(canciones{k})
+        error('No se encontro la cancion: %s', canciones{k});
+    end
+
+    [x{k}, fs(k)] = leer_fragmento( ...
+        canciones{k}, inicio_s, duracion_s);
+end
+
+fprintf('\nCancion cargada correctamente.\n');
+
+%% PARTE 5. INFORMACION DE LA SEÑAL
+
+fprintf('\n=== INFORMACION DE LA SEÑAL ===\n');
+
+for k = 1:1
+    fprintf(['%s | fs = %d Hz | muestras = %d | ', ...
+             'duracion = %.2f s | pico = %.2f\n'], ...
+             titulos{k}, fs(k), numel(x{k}), ...
+             numel(x{k})/fs(k), max(abs(x{k})));
+end
+
+%% PARTE 6. GRAFICA DE LA SEÑAL ORIGINAL
+
+figure('Name', 'Parte 6 - Señal original', ...
+       'NumberTitle', 'off');
+
+for k = 1:1
+    t = (0:numel(x{k})-1)'/fs(k);
+
+    subplot(1, 1, k);
+    plot(t, x{k}, 'b');
+    grid on;
+    ylim([-1.2 1.2]);
+    title(['Señal original: ' titulos{k}]);
+    xlabel('Tiempo (s)');
+    ylabel('Amplitud (V)');
+end
+
+%% PARTE 7. AMPLIFICACION Y ATENUACION
+
+for k = 1:1
+    t = (0:numel(x{k})-1)'/fs(k);
+
+    figure('Name', ['Parte 7A - ' titulos{k}], ...
+           'NumberTitle', 'off', ...
+           'Position', [50 50 1100 700]);
+
+    for g = 1:numel(ganancias)
+        y = amplificar(x{k}, ganancias(g));
+
+        subplot(3, 2, g);
+        plot(t, x{k}, 'Color', [0.6 0.6 1]);
+        hold on;
+        plot(t, y, 'r');
+        hold off;
+
+        grid on;
+        ylim([-1.2 1.2]);
+
+        title(sprintf('a = %g (%s)', ...
+              ganancias(g), tipo_escalamiento(ganancias(g))));
+
+        xlabel('Tiempo (s)');
+        ylabel('Amplitud');
+    end
+
+    if exist('sgtitle', 'file')
+        sgtitle(['Escalamiento en amplitud - ' titulos{k}]);
+    end
+end
+
+% Zoom de 20 ms
+
+for k = 1:1
+    idx = round(1*fs(k)) + (1:round(0.02*fs(k)));
+    idx = idx(idx <= numel(x{k}));
+
+    tz = (0:numel(idx)-1)'/fs(k)*1000;
+
+    figure('Name', ['Parte 7B zoom - ' titulos{k}], ...
+           'NumberTitle', 'off', ...
+           'Position', [80 80 1100 700]);
+
+    for g = 1:numel(ganancias)
+        a = ganancias(g);
+
+        subplot(3, 2, g);
+        plot(tz, x{k}(idx), 'b', 'LineWidth', 1.2);
+        hold on;
+        plot(tz, a*x{k}(idx), 'r--');
+        plot(tz, amplificar(x{k}(idx), a), ...
+             'r', 'LineWidth', 1.6);
+        hold off;
+
+        grid on;
+        ylim([-2.2 2.2]);
+
+        title(sprintf('a = %g (%s)', ...
+              a, tipo_escalamiento(a)));
+
+        xlabel('Tiempo (ms)');
+        ylabel('Amplitud');
+    end
+
+    if exist('sgtitle', 'file')
+        sgtitle(['Zoom 20 ms - ' titulos{k}]);
+    end
+end
+
+%% PARTE 8. TABLA DE RESULTADOS
+
+res = table('Size', [0 7], ...
+    'VariableTypes', ...
+    {'string','double','double','double','double','double','double'}, ...
+    'VariableNames', ...
+    {'Cancion','Ganancia_a','Ganancia_dB','Pico', ...
+     'RMS','PicoAPico','Saturacion_pct'});
+
+for k = 1:1
+    for g = 1:numel(ganancias)
+        a = ganancias(g);
+        y = amplificar(x{k}, a);
+
+        if a == 0
+            ganancia_dB = -Inf;
+        else
+            ganancia_dB = 20*log10(abs(a));
+        end
+
+        res(end+1, :) = { ...
+            string(titulos{k}), ...
+            a, ...
+            ganancia_dB, ...
+            max(abs(y)), ...
+            sqrt(mean(y.^2)), ...
+            max(y)-min(y), ...
+            100*mean(abs(a*x{k}) > 1)};
+    end
+end
+
+fprintf('\n=== TABLA DE RESULTADOS ===\n');
+disp(res);
+
+writetable(res, fullfile(carpeta_proyecto, ...
+    'resultados_amplitud.csv'));
+
+%% PARTE 9. SUPERPONER LAS TRES VERSIONES
+
+figure('Name', 'Parte 9 - hold on', ...
+       'NumberTitle', 'off', ...
+       'Position', [100 100 1000 650]);
+
+for k = 1:1
+    idx = round(1*fs(k)) + (1:round(0.02*fs(k)));
+    idx = idx(idx <= numel(x{k}));
+
+    tz = (0:numel(idx)-1)'/fs(k)*1000;
+
+    subplot(1, 1, k);
+    plot(tz, x{k}(idx), 'b', 'LineWidth', 1.5);
+    hold on;
+
+    plot(tz, amplificar(x{k}(idx), 2), ...
+         'r', 'LineWidth', 1.5);
+
+    plot(tz, amplificar(x{k}(idx), 0.5), ...
+         'g', 'LineWidth', 1.5);
+
+    hold off;
+    grid on;
+    ylim([-1.2 1.2]);
+
+    legend('Original (a = 1)', ...
+           'Amplificada (a = 2)', ...
+           'Atenuada (a = 0.5)');
+
+    title(['Superposicion (hold on) - ' titulos{k}]);
+    xlabel('Tiempo (ms)');
+    ylabel('Amplitud');
+end
+
+%% PARTE 10. ESPECTRO DE AMPLITUD
+
+figure('Name', 'Parte 10 - Espectro', ...
+       'NumberTitle', 'off', ...
+       'Position', [120 120 1000 650]);
+
+for k = 1:1
+    N = numel(x{k});
+    f = (0:N-1)' * fs(k) / N;
+    X = abs(fft(x{k})) / N * 2;
+    m = 1:floor(N/2);
+
+    subplot(1, 1, k);
+    plot(f(m), X(m), 'b');
+    hold on;
+    plot(f(m), 2*X(m), 'r');
+    plot(f(m), 0.5*X(m), 'g');
+    hold off;
+
+    xlim([0 min(4000, fs(k)/2)]);
+    grid on;
+
+    legend('a = 1', 'a = 2', 'a = 0.5');
+    title(['Espectro de amplitud - ' titulos{k}]);
+    xlabel('Frecuencia (Hz)');
+    ylabel('|X(f)|');
+end
+
+%% PARTE 11. HISTOGRAMA DE AMPLITUDES
+
+figure('Name', 'Parte 11 - Histograma', ...
+       'NumberTitle', 'off', ...
+       'Position', [140 140 1000 650]);
+
+for k = 1:1
+    subplot(1, 1, k);
+
+    histogram(x{k}, 100, 'FaceColor', 'b');
+    hold on;
+    histogram(2*x{k}, 100, 'FaceColor', 'r');
+    hold off;
+
+    grid on;
+    legend('Original', 'a = 2');
+
+    title(['Histograma de amplitudes - ' titulos{k}]);
+    xlabel('Amplitud');
+    ylabel('Frecuencia de ocurrencia');
+end
+
+%% PARTE 12. ESCALAR VS SUMAR VS MULTIPLICAR
+
+x1 = x{1};
+fs_c = fs(1);
+
+L = numel(x1);
+tc = (0:L-1)'/fs_c;
+
+escalada = amplificar(x1, 2);
+suma = amplificar(x1 + x1, 1);
+producto = amplificar(x1 .* x1, 1);
+
+rampa = amplificar(x1 .* linspace(0.1, 4, L)', 1);
+
+figure('Name', 'Parte 12 - Escalar, sumar, multiplicar', ...
+       'NumberTitle', 'off', ...
+       'Position', [160 160 1100 700]);
+
+subplot(2, 2, 1);
+plot(tc, escalada, 'r');
+title('Escalado: 2 * Gominola');
+
+subplot(2, 2, 2);
+plot(tc, suma, 'm');
+title('Suma: Gominola + Gominola');
+
+subplot(2, 2, 3);
+plot(tc, producto, 'k');
+title('Multiplicacion punto a punto');
+
+subplot(2, 2, 4);
+plot(tc, rampa, 'b');
+title('Ganancia variable (fade-in x0.1 a x4)');
+
+for k = 1:4
+    subplot(2, 2, k);
+    grid on;
+    ylim([-1.2 1.2]);
+    xlabel('Tiempo (s)');
+    ylabel('Amplitud');
+end
+
+%% PARTE 13. REPRODUCIR LA CANCION CON DISTINTAS GANANCIAS
+
+if reproducir
+    seg = 25;
+
+    for k = 1:1
+        for a = [0.25 1 2 4]
+            nn = min(numel(x{k}), round(seg*fs(k)));
+
+            fprintf('Reproduciendo %s durante 25 segundos con a = %g (%s)\n', ...
+                titulos{k}, a, tipo_escalamiento(a));
+
+            sound(amplificar(x{k}(1:nn), a), fs(k));
+
+            pause(nn/fs(k) + 0.5);
+        end
+    end
+end
+
+%% PARTE 14. GUARDAR LOS AUDIOS AMPLIFICADOS
+
+if guardar_wav
+    for k = 1:1
+        for a = [0.5 2 4 -1]
+            archivo_out = sprintf('%s_a%g.wav', nombres{k}, a);
+
+            ruta_salida = fullfile(carpeta_proyecto, archivo_out);
+
+            audiowrite(ruta_salida, ...
+                amplificar(x{k}, a), fs(k));
+
+            fprintf('Guardado: %s\n', ruta_salida);
+        end
+    end
+end
+
+fprintf('\nListo. Revisa las figuras y los archivos generados.\n');
+fprintf('Los resultados se encuentran en: %s\n', carpeta_proyecto);
+
+%% =====================================================================
+% FUNCIONES LOCALES
+%% =====================================================================
+
+function [x, fs] = leer_fragmento(archivo, t_ini, dur)
+
+    [y, fs] = audioread(archivo);
+
+    % Convertir audio estereo a mono
+    y = mean(y, 2);
+
+    % Calcular las muestras inicial y final
+    i1 = round(t_ini*fs) + 1;
+    i2 = min(round((t_ini + dur)*fs), length(y));
+
+    % Si el inicio supera la duracion, usar el comienzo
+    if i1 >= i2
+        i1 = 1;
+        i2 = min(round(dur*fs), length(y));
+    end
+
+    x = y(i1:i2);
+
+    % Quitar componente continua
+    x = x - mean(x);
+
+    % Evitar division entre cero
+    pico = max(abs(x));
+
+    if pico > 0
+        x = x / pico;
+    end
+
+    % Dejar margen para amplificar
+    x = 0.5*x;
+end
+
+function y = amplificar(x, a)
+
+    % Escalamiento en amplitud con limite de +-1
+    y = max(min(a*x, 1), -1);
+end
+
+function s = tipo_escalamiento(a)
+
+    if a == 0
+        s = 'silencio';
+
+    elseif a == 1
+        s = 'sin cambio';
+
+    elseif a > 1
+        s = 'amplificacion';
+
+    elseif a > 0
+        s = 'atenuacion';
+
+    elseif a == -1
+        s = 'inversion de fase';
+
+    elseif a < -1
+        s = 'inversion + amplificacion';
+
+    else
+        s = 'inversion + atenuacion';
+    end
+end
